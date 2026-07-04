@@ -7,7 +7,6 @@ import config
 class GraySensorArray:
     def __init__(self):
         self.adc_objects = {}
-        self.baseline = {}
         self._init_adc()
 
     def _init_adc(self):
@@ -48,37 +47,14 @@ class GraySensorArray:
             values[name] = self._read_channel_filtered(adc)
         return values
 
-    def calibrate_baseline(self):
-        print("")
-        print("Calibrating baseline. Put all sensors on white/background.")
-        totals = {name: 0 for name in config.CHANNELS}
-        count = 0
-        start_ms = time.ticks_ms()
-
-        while time.ticks_diff(time.ticks_ms(), start_ms) < config.CALIBRATION_TIME_MS:
-            values = self.read_raw()
-            for name in config.CHANNELS:
-                totals[name] += values[name]
-            count += 1
-            time.sleep_ms(config.CALIBRATION_INTERVAL_MS)
-
-        for name in config.CHANNELS:
-            self.baseline[name] = totals[name] // max(count, 1)
-
-        print("Baseline:", self.baseline)
-        print("")
-        return self.baseline
-
     def read_state(self):
-        if not self.baseline:
-            raise RuntimeError("Call calibrate_baseline() before read_state().")
-
         raw = self.read_raw()
-        delta = {}
         black = {}
         for name in config.CHANNELS:
-            delta[name] = self.baseline[name] - raw[name]
-            black[name] = delta[name] >= config.BLACK_DELTA_THRESHOLDS[name]
+            threshold = config.BLACK_RAW_THRESHOLDS[name]
+            if config.BLACK_IS_HIGH:
+                black[name] = raw[name] >= threshold
+            else:
+                black[name] = raw[name] <= threshold
 
-        return raw, delta, black
-
+        return raw, black

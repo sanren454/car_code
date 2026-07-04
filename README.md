@@ -1,72 +1,184 @@
-# 五路灰度传感器 ADC 测试
+# 五路灰度传感器循迹
 
-## 1. ESP32-S3 采集
+后续代码修改以本 README 为准。当前循迹程序使用五路灰度传感器、连续强度 error 和 PD 控制。
 
-把 `esp32_gray_sampler.py` 上传到 ESP32，并在 Thonny 中运行。
+## 1. 引脚配置
 
-默认配置:
+原五路 ADC 引脚固定如下：
 
-- GPIO27: adc1
-- GPIO33: adc2
-- GPIO32: adc3
-- GPIO35: adc4
-- GPIO34: adc5
-- 采集 30 秒
-- 每 100 ms 采样一次
-- 保存文件: `gray_sensor_data.csv`
+- `adc1`: GPIO27
+- `adc2`: GPIO33
+- `adc3`: GPIO32
+- `adc4`: GPIO35
+- `adc5`: GPIO34
 
-需要修改采集时长或采样间隔时，改 `main()` 里的这一行:
+传感器从左到右的物理顺序固定如下：
+
+```text
+adc4, adc3, adc2, adc1, adc5
+```
+
+对应逻辑名称和权重：
+
+- `adc4`: L2，权重 -2
+- `adc3`: L1，权重 -1
+- `adc2`: M，权重 0
+- `adc1`: R1，权重 1
+- `adc5`: R2，权重 2
+
+## 2. 主要文件
+
+- `config.py`: ADC、电机、阈值、PD、搜线和调试参数
+- `gray_sensor.py`: 五路 ADC 初始化、滤波读取、黑线判断
+- `motor.py`: 左右电机 PWM 控制
+- `line_follower.py`: 五路 PD 循迹主程序
+- `motor_speed_test.py`: 双电机定值速度测试
+
+## 3. 黑线判断
+
+默认灰度传感器检测到黑线时 ADC 原始值更低：
 
 ```python
-samples = sampler.collect(duration_s=30, interval_ms=100)
+BLACK_IS_HIGH = False
 ```
 
-## 2. 导出数据
-
-采集结束后，从 ESP32 文件系统下载 `gray_sensor_data.csv` 到电脑。
-
-## 3. 电脑端画图
-
-安装依赖:
-
-```powershell
-pip install matplotlib
-```
-
-在保存 CSV 的目录运行:
-
-```powershell
-python plot_gray_adc.py gray_sensor_data.csv -o gray_sensor_adc_plot.png
-```
-
-输出图像的横轴是时间，纵轴是 ADC 原始值，五条曲线分别对应 `adc1` 到 `adc5`。
-
-## 4. 黑线循迹
-
-循迹代码文件:
-
-- `config.py`: 所有可调参数，包括 ADC 引脚、阈值、电机引脚、速度、滤波参数
-- `gray_sensor.py`: 灰度传感器读取、滤波、启动基线校准、变化量判断
-- `motor.py`: 左右电机正反转和 PWM 控制
-- `line_follower.py`: 主循迹逻辑
-
-使用前必须确认 `config.py` 里的电机引脚:
+此时某一路满足下面条件就认为检测到黑线：
 
 ```python
-LEFT_MOTOR_FORWARD_PIN = 15
-LEFT_MOTOR_BACKWARD_PIN = 13
-
-RIGHT_MOTOR_FORWARD_PIN = 14
-RIGHT_MOTOR_BACKWARD_PIN = 25
+raw <= threshold
 ```
 
-运行 `line_follower.py` 前，把五路传感器都放在白底或非黑线背景上。程序启动后会先校准基线，之后用 `baseline - current_value` 的变化量判断黑线。
+如果你的模块检测到黑线时 ADC 原始值更高，改成：
 
-当前逻辑:
+```python
+BLACK_IS_HIGH = True
+```
 
-- `adc1` 检测到黑线: 左轮反转，右轮正转，大左转
-- `adc5` 检测到黑线: 左轮正转，右轮反转，大右转
-- `adc2` 检测到黑线: 两轮正转，左慢右快，小左转
-- `adc4` 检测到黑线: 两轮正转，左快右慢，小右转
-- `adc3` 检测到黑线: 两轮同速正转
-- 五路都没有检测到黑线: 停车
+此时判断条件变为：
+
+```python
+raw >= threshold
+```
+
+当前五路阈值顺序是 `L2, L1, M, R1, R2`：
+
+```python
+FOLLOWER_THRESHOLDS = [2000, 2000, 2000, 2000, 2000]
+```
+
+`gray_sensor.py` 使用 `BLACK_RAW_THRESHOLDS` 按 ADC 名称查阈值，数值需要和上面的五路顺序保持一致。
+
+## 4. PD 循迹
+
+循迹程序按五路连续黑线强度计算 error，不使用固定动作表。
+
+中路 `M` 检测到黑线时优先级最高，但不会把修正量直接清零。程序会保留上一轮 `correction` 的一小部分，让车平滑回正：
+
+```python
+CENTER_DAMPING_GAIN = 0.35
+correction = last_correction * CENTER_DAMPING_GAIN
+```
+
+只有 `M` 没有检测到黑线时，才按下面的连续 error 和 PD 逻辑修正。这样 `L1/R1` 灰度变化时仍然执行原来的修正逻辑，而进入中路时不会因为修正量突变为 0 造成超调。
+
+黑线强度映射：
+
+```python
+strength = (ADC_MAX_VALUE - raw) / ADC_MAX_VALUE
+```
+
+如果 `BLACK_IS_HIGH = True`，则映射反过来：
+
+```python
+strength = raw / ADC_MAX_VALUE
+```
+
+error 计算：
+
+```python
+error = sum(weight_i * strength_i) / sum(strength_i)
+```
+
+PD 控制：
+
+```python
+correction = Kp * error + Kd * (error - last_error)
+correction = TURN_DIR * correction
+left_speed = BASE_SPEED + correction
+right_speed = BASE_SPEED - correction
+```
+
+五路最外侧 `L2/R2` 检测到黑线时，会用 `EDGE_CORRECTION_GAIN` 轻微加强修正。
+
+## 5. 丢线处理
+
+五路 `black` 全是 `0` 时，程序还会先看连续强度总和：
+
+```python
+LINE_PRESENT_STRENGTH_MIN = 0.35
+```
+
+如果当前帧不是全 4095，而是某一路还有明显黑线强度，例如 `L2=1488`，程序继续使用连续强度计算 PD，不进入丢线。
+
+如果五路 ADC 都接近 `4095`，连续强度也会接近 0。此时当前帧已经没有足够位置信息，不能靠当前帧算出线在哪里，只能靠上一段时间的运动连续性处理。
+
+当前策略是：正常循迹时保存最左侧 `L2` 和最右侧 `R2` 的原始值。五路全白后，先比较当前 `L2/R2` 和上一次正常循迹时的 `L2/R2` 是否基本没变：
+
+```python
+OUTER_STABLE_RAW_DELTA = 120
+```
+
+如果两侧读数变化很小，说明两边背景没有明显变化，黑线更可能卡在中间传感器缝隙里，程序会保持上一次电机输出继续向前跨过去。
+
+但这个判断不能无限保持，因为车完全跑到白地上时两侧也可能一直不变。所以仍然保留最大确认时间：
+
+```python
+LOST_LINE_CONFIRM_MS = 250
+```
+
+如果两侧变化明显，或者全白持续超过确认时间，再按最近可靠的连续 `error` 方向搜线：
+
+- `error < -SEARCH_DIRECTION_ERROR_THRESHOLD`: 记录为向左搜线
+- `error > SEARCH_DIRECTION_ERROR_THRESHOLD`: 记录为向右搜线
+- `abs(error)` 没超过阈值时保持原方向
+- 启动后还没有可靠方向记录时，默认向右搜线
+
+关闭丢线搜线：
+
+```python
+LOST_LINE_SEARCH = False
+```
+
+关闭后，丢线时左右电机输出为 `0`。
+
+## 6. 电机控制方式
+
+电机不是直接给固定电压控制，而是通过 ESP32 的 PWM 输出控制电机驱动板。
+
+每个电机有两个 PWM 引脚：
+
+- 左电机：GPIO14 前进，GPIO25 后退
+- 右电机：GPIO15 前进，GPIO13 后退
+
+`speed > 0` 时前进 PWM 有占空比、后退 PWM 为 0；`speed < 0` 时反过来。`speed` 的绝对值就是 PWM 占空比百分比，范围 `0` 到 `100`。
+
+当前 PWM 频率：
+
+```python
+PWM_FREQ = 1000
+```
+
+也就是 1 kHz PWM。
+
+## 7. 调试输出
+
+`DEBUG = True` 时会按 `DEBUG_INTERVAL_MS` 打印一行调试数据，包括：
+
+- 运行时间
+- 五路 ADC 原始值
+- 五路连续黑线强度
+- 五路黑线判断结果
+- error
+- correction
+- 搜线方向
+- 左右电机输出
