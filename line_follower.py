@@ -80,16 +80,11 @@ def update_search_direction(error, last_search_direction):
     return last_search_direction
 
 
-def outer_readings_stable(raw_values, last_outer_raw):
-    if last_outer_raw is None:
+def outer_black_unchanged(black_values, last_outer_black):
+    if last_outer_black is None:
         return False
 
-    left_delta = abs(raw_values[0] - last_outer_raw[0])
-    right_delta = abs(raw_values[-1] - last_outer_raw[1])
-    return (
-        left_delta <= config.OUTER_STABLE_RAW_DELTA
-        and right_delta <= config.OUTER_STABLE_RAW_DELTA
-    )
+    return black_values[0] == last_outer_black[0] and black_values[-1] == last_outer_black[1]
 
 
 def search_line(last_search_direction):
@@ -124,12 +119,10 @@ def print_startup_info():
     print("order:", ", ".join(config.FOLLOWER_SENSOR_NAMES))
     print("channels:", ", ".join(config.FOLLOWER_CHANNELS))
     print("weights:", config.FOLLOWER_WEIGHTS)
-    print("thresholds:", config.FOLLOWER_THRESHOLDS)
-    print("ADC_MAX_VALUE:", config.ADC_MAX_VALUE)
+    print("thresholds:", config.BLACK_RAW_THRESHOLDS)
     print("BLACK_IS_HIGH:", config.BLACK_IS_HIGH)
+    print("LOST_LINE_HOLD:", config.LOST_LINE_HOLD)
     print("LOST_LINE_SEARCH:", config.LOST_LINE_SEARCH)
-    print("LOST_LINE_CONFIRM_MS:", config.LOST_LINE_CONFIRM_MS)
-    print("OUTER_STABLE_RAW_DELTA:", config.OUTER_STABLE_RAW_DELTA)
     print("TURN_DIR:", config.TURN_DIR)
     print("BASE_SPEED:", config.BASE_SPEED)
     print("Kp:", config.Kp)
@@ -146,8 +139,7 @@ def main():
 
     last_error = 0
     last_search_direction = 0
-    lost_since_ms = None
-    last_outer_raw = None
+    last_outer_black = None
     last_left_output = 0
     last_right_output = 0
     last_debug_ms = time.ticks_ms()
@@ -170,11 +162,9 @@ def main():
             error, line_lost = calculate_error(black_values, last_error)
 
             if line_lost:
-                if lost_since_ms is None:
-                    lost_since_ms = now_ms
-
-                outer_stable = outer_readings_stable(raw_values, last_outer_raw)
-                if outer_stable and time.ticks_diff(now_ms, lost_since_ms) < config.LOST_LINE_CONFIRM_MS:
+                outer_unchanged = outer_black_unchanged(black_values, last_outer_black)
+                hold_enabled = config.LOST_LINE_HOLD and outer_unchanged
+                if hold_enabled:
                     mode = "hold"
                     correction = 0
                     left_output = last_left_output
@@ -183,10 +173,9 @@ def main():
                     mode = "search"
                     correction, left_output, right_output = search_line(last_search_direction)
             else:
-                lost_since_ms = None
-                outer_stable = True
+                outer_unchanged = True
                 mode = "pd"
-                last_outer_raw = (raw_values[0], raw_values[-1])
+                last_outer_black = (black_values[0], black_values[-1])
                 correction, left_output, right_output = pd_control(
                     error,
                     last_error,
@@ -204,12 +193,12 @@ def main():
             now_ms = time.ticks_ms()
             if config.DEBUG and time.ticks_diff(now_ms, last_debug_ms) >= config.DEBUG_INTERVAL_MS:
                 print(
-                    "t={}ms raw=[{}] binary=[{}] lost={} outer_stable={} mode={} error={:.2f} dt={}ms actual_dt={}ms correction={:.2f} last_side={} L={} R={}".format(
+                    "t={}ms raw=[{}] binary=[{}] lost={} outer_same={} mode={} error={:.2f} dt={}ms actual_dt={}ms correction={:.2f} last_side={} L={} R={}".format(
                         time.ticks_diff(now_ms, start_ms),
                         format_values(config.FOLLOWER_SENSOR_NAMES, raw_values),
                         format_values(config.FOLLOWER_SENSOR_NAMES, black_values),
                         1 if line_lost else 0,
-                        1 if outer_stable else 0,
+                        1 if outer_unchanged else 0,
                         mode,
                         error,
                         config.CONTROL_DT_MS,

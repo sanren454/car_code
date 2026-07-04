@@ -13,25 +13,20 @@ CHANNELS = ["adc4", "adc3", "adc2", "adc1", "adc5"]
 # Five-channel line follower configuration.
 FOLLOWER_CHANNELS = ["adc4", "adc3", "adc2", "adc1", "adc5"]
 FOLLOWER_SENSOR_NAMES = ["L2", "L1", "M", "R1", "R2"]
-FOLLOWER_ADC_PINS = [ADC_PINS[name] for name in FOLLOWER_CHANNELS]
 FOLLOWER_WEIGHTS = [-2, -1, 0, 1, 2]
-FOLLOWER_THRESHOLDS = [2000, 2000, 2000, 2000, 2000]
 BLACK_IS_HIGH = False
-ADC_MAX_VALUE = 4095
 
 # PD and speed parameters.
-BASE_SPEED = 35	
-MIN_BASE_SEED = 25
+BASE_SPEED = 40	
 MAX_SPEED = 80
 MIN_SPEED = 25
-Kp = 15
+Kp = 13
 Kd = 1.5
 SEARCH_SPEED = 34
 
-LOST_LINE_SEARCH = False                                              
+LOST_LINE_HOLD = True
+LOST_LINE_SEARCH = True
 SEARCH_DIRECTION_ERROR_THRESHOLD = 0.15
-LOST_LINE_CONFIRM_MS = 400
-OUTER_STABLE_RAW_DELTA = 120
 
 # Wheel trim and correction direction.
 LEFT_TRIM = 0
@@ -42,17 +37,17 @@ TURN_DIR = 1
 EDGE_CORRECTION_GAIN = 1.05
 
 # Main loop and debug output.
-CONTROL_DT_MS = 20
+CONTROL_DT_MS = 11
 LOOP_DELAY_MS = 5
 DEBUG = True
 DEBUG_INTERVAL_MS = 200
 
 # ADC filtering parameters.
 # Increase these values if readings jump or adjacent channels interfere.
-DUMMY_READS = 2
-SETTLE_US = 500
-SAMPLES_PER_CHANNEL = 7
-SAMPLE_GAP_US = 150
+DUMMY_READS = 1
+SETTLE_US = 200
+SAMPLES_PER_CHANNEL = 3
+SAMPLE_GAP_US = 80
 
 # Black-line raw ADC thresholds.
 # Many line sensors output high voltage on white/background and low voltage on black.
