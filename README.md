@@ -1,6 +1,6 @@
 # 五路灰度传感器循迹
 
-当前程序使用五路灰度传感器的二值黑白判断计算 `error`，再用 PD 控制左右电机差速。不使用连续灰度强度算法，也没有中间传感器触发后的单独回正逻辑。
+当前程序使用五路灰度传感器的二值黑白判断计算 `error`，再用 PD 控制左右电机差速。电机速度采用只减不加逻辑：`BASE_SPEED` 可以设置得较高，转弯时 PD 修正量只用于降低一侧电机速度，另一侧不会超过 `BASE_SPEED`。不使用连续灰度强度算法，也没有中间传感器触发后的单独回正逻辑。
 
 ## 1. 传感器和引脚
 
@@ -120,34 +120,44 @@ derivative = (error - last_error) / dt_s
 correction = Kp * error + Kd * derivative
 ```
 
-`dt_s` 来自固定配置：
+`dt_s` 来自实测控制循环间隔，`CONTROL_DT_MS` 只作为调试输出里的目标周期：
 
 ```python
-CONTROL_DT_MS = 11
-dt_s = CONTROL_DT_MS / 1000
+elapsed_ms = time.ticks_diff(now_ms, last_control_ms)
+dt_s = elapsed_ms / 1000
 ```
 
-左右电机输出：
+左右电机输出采用只减不加逻辑：
 
 ```python
-left_speed = BASE_SPEED + correction
-right_speed = BASE_SPEED - correction
-left_output = limit_speed(left_speed + LEFT_TRIM)
-right_output = limit_speed(right_speed + RIGHT_TRIM)
+base_speed = limit_forward_speed(BASE_SPEED)
+slowdown = abs(correction)
+
+if correction > 0:
+    left_speed = base_speed
+    right_speed = base_speed - slowdown
+else:
+    left_speed = base_speed - slowdown
+    right_speed = base_speed
+
+left_output = limit_forward_speed(left_speed + LEFT_TRIM)
+right_output = limit_forward_speed(right_speed + RIGHT_TRIM)
 ```
 
-五路最外侧 `L2/R2` 检测到黑线时，会用 `EDGE_CORRECTION_GAIN` 轻微加强修正。
+这样直行时两侧接近 `BASE_SPEED`，转弯时只降低内侧或需要减速的一侧。原有直线加速策略和出弯加速策略已经删除。
+
+五路最外侧 `L2/R2` 检测到黑线时，会用 `OUTER_TURN_GAIN` 加强修正。
 
 主要参数：
 
 ```python
 BASE_SPEED = 40
-MAX_SPEED = 80
+MAX_SPEED = 100
 MIN_SPEED = 25
 Kp = 13
 Kd = 1.5
-CONTROL_DT_MS = 11
-EDGE_CORRECTION_GAIN = 1.05
+CONTROL_DT_MS = 6
+OUTER_TURN_GAIN = 1.25
 LEFT_TRIM = 0
 RIGHT_TRIM = 1
 TURN_DIR = 1
@@ -179,12 +189,12 @@ current_outer_black = (L2, R2)
 
 ```python
 LOST_LINE_HOLD = True
-LOST_LINE_SEARCH = False
+LOST_LINE_SEARCH = True
 SEARCH_SPEED = 34
 SEARCH_DIRECTION_ERROR_THRESHOLD = 0.15
 ```
 
-`LOST_LINE_SEARCH = False` 时，进入 `search` 后停车。改成 `True` 后，程序会按最近一次可靠的 `error` 方向旋转搜线。
+`LOST_LINE_SEARCH = True` 时，程序会按最近一次可靠的 `error` 方向旋转搜线。改成 `False` 后，进入 `search` 会输出 `0, 0`。
 
 ## 6. 电机控制
 
@@ -209,9 +219,9 @@ RIGHT_MOTOR_REVERSE = True
 
 ```python
 DUMMY_READS = 1
-SETTLE_US = 200
-SAMPLES_PER_CHANNEL = 3
-SAMPLE_GAP_US = 80
+SETTLE_US = 100
+SAMPLES_PER_CHANNEL = 2
+SAMPLE_GAP_US = 40
 ```
 
 含义：
@@ -234,6 +244,7 @@ SAMPLE_GAP_US = 80
 - 最外侧黑白是否未变化 `outer_same`
 - 当前模式 `mode`
 - `error`
+- 当前基础速度 `base`
 - 配置使用的 `dt`
 - 实测循环间隔 `actual_dt`
 - `correction`

@@ -17,12 +17,18 @@ FOLLOWER_WEIGHTS = [-2, -1, 0, 1, 2]
 BLACK_IS_HIGH = False
 
 # PD and speed parameters.
-BASE_SPEED = 40	
-MAX_SPEED = 80
+BASE_SPEED = 40
+MAX_SPEED = 100
 MIN_SPEED = 25
 Kp = 13
 Kd = 1.5
 SEARCH_SPEED = 34
+
+# Outer sensor boost increases steering when L2/R2 sees the line.
+OUTER_TURN_GAIN = 1.25
+
+# Limit D term spikes to reduce steering jitter at high speed.
+DERIVATIVE_LIMIT = 50
 
 LOST_LINE_HOLD = True
 LOST_LINE_SEARCH = True
@@ -33,21 +39,18 @@ LEFT_TRIM = 0
 RIGHT_TRIM = 1
 TURN_DIR = 1
 
-# Edge handling.
-EDGE_CORRECTION_GAIN = 1.05
-
 # Main loop and debug output.
-CONTROL_DT_MS = 11
-LOOP_DELAY_MS = 5
+CONTROL_DT_MS = 6
+LOOP_DELAY_MS = 1
 DEBUG = True
-DEBUG_INTERVAL_MS = 200
+DEBUG_INTERVAL_MS = 300
 
 # ADC filtering parameters.
 # Increase these values if readings jump or adjacent channels interfere.
 DUMMY_READS = 1
-SETTLE_US = 200
-SAMPLES_PER_CHANNEL = 3
-SAMPLE_GAP_US = 80
+SETTLE_US = 100
+SAMPLES_PER_CHANNEL = 2
+SAMPLE_GAP_US = 40
 
 # Black-line raw ADC thresholds.
 # Many line sensors output high voltage on white/background and low voltage on black.

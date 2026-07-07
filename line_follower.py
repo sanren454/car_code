@@ -5,22 +5,6 @@ from gray_sensor import GraySensorArray
 from motor import MotorDriver
 
 
-def limit_speed(speed):
-    speed = int(speed)
-
-    if speed > config.MAX_SPEED:
-        return config.MAX_SPEED
-    if speed < -config.MAX_SPEED:
-        return -config.MAX_SPEED
-
-    if 0 < speed < config.MIN_SPEED:
-        return config.MIN_SPEED
-    if -config.MIN_SPEED < speed < 0:
-        return -config.MIN_SPEED
-
-    return speed
-
-
 def read_sensors(sensor_array):
     raw_by_channel, black_by_channel = sensor_array.read_state()
 
@@ -52,24 +36,39 @@ def has_edge_black(black_values):
     return black_values[0] or black_values[-1]
 
 
+def limit_derivative(derivative):
+    if derivative > config.DERIVATIVE_LIMIT:
+        return config.DERIVATIVE_LIMIT
+    if derivative < -config.DERIVATIVE_LIMIT:
+        return -config.DERIVATIVE_LIMIT
+    return derivative
+
+
 def pd_control(error, last_error, black_values, dt_s):
     if dt_s <= 0:
         dt_s = 0.001
 
     derivative = (error - last_error) / dt_s
+    derivative = limit_derivative(derivative)
     correction = config.Kp * error + config.Kd * derivative
     if has_edge_black(black_values):
-        correction *= config.EDGE_CORRECTION_GAIN
+        correction *= config.OUTER_TURN_GAIN
 
     correction = config.TURN_DIR * correction
+    base_speed = int(config.BASE_SPEED)
+    slowdown = abs(correction)
 
-    left_speed = config.BASE_SPEED + correction
-    right_speed = config.BASE_SPEED - correction
+    if correction > 0:
+        left_speed = base_speed
+        right_speed = base_speed - slowdown
+    else:
+        left_speed = base_speed - slowdown
+        right_speed = base_speed
 
-    left_output = limit_speed(left_speed + config.LEFT_TRIM)
-    right_output = limit_speed(right_speed + config.RIGHT_TRIM)
+    left_output = int(left_speed + config.LEFT_TRIM)
+    right_output = int(right_speed + config.RIGHT_TRIM)
 
-    return correction, left_output, right_output
+    return base_speed, correction, left_output, right_output
 
 
 def update_search_direction(error, last_search_direction):
@@ -101,7 +100,7 @@ def search_line(last_search_direction):
         left_output = config.SEARCH_SPEED + config.LEFT_TRIM
         right_output = -config.SEARCH_SPEED
 
-    return 0, limit_speed(left_output), limit_speed(right_output)
+    return 0, int(left_output), int(right_output)
 
 
 def format_values(names, values):
@@ -127,7 +126,10 @@ def print_startup_info():
     print("BASE_SPEED:", config.BASE_SPEED)
     print("Kp:", config.Kp)
     print("Kd:", config.Kd)
-    print("CONTROL_DT_MS:", config.CONTROL_DT_MS)
+    print("speed mode: signed subtract-only PD")
+    print("OUTER_TURN_GAIN:", config.OUTER_TURN_GAIN)
+    print("DERIVATIVE_LIMIT:", config.DERIVATIVE_LIMIT)
+    print("CONTROL_DT_MS target:", config.CONTROL_DT_MS)
     print("LEFT_TRIM:", config.LEFT_TRIM)
     print("RIGHT_TRIM:", config.RIGHT_TRIM)
     print("PWM_FREQ:", config.PWM_FREQ)
@@ -154,10 +156,11 @@ def main():
             elapsed_ms = time.ticks_diff(now_ms, last_control_ms)
             if elapsed_ms <= 0:
                 elapsed_ms = 1
-            dt_s = config.CONTROL_DT_MS / 1000
+            dt_s = elapsed_ms / 1000
 
             raw_values, black_values = read_sensors(sensors)
             mode = None
+            base_speed = 0
 
             error, line_lost = calculate_error(black_values, last_error)
 
@@ -176,7 +179,7 @@ def main():
                 outer_unchanged = True
                 mode = "pd"
                 last_outer_black = (black_values[0], black_values[-1])
-                correction, left_output, right_output = pd_control(
+                base_speed, correction, left_output, right_output = pd_control(
                     error,
                     last_error,
                     black_values,
@@ -193,7 +196,7 @@ def main():
             now_ms = time.ticks_ms()
             if config.DEBUG and time.ticks_diff(now_ms, last_debug_ms) >= config.DEBUG_INTERVAL_MS:
                 print(
-                    "t={}ms raw=[{}] binary=[{}] lost={} outer_same={} mode={} error={:.2f} dt={}ms actual_dt={}ms correction={:.2f} last_side={} L={} R={}".format(
+                    "t={}ms raw=[{}] binary=[{}] lost={} outer_same={} mode={} error={:.2f} base={} dt={}ms actual_dt={}ms correction={:.2f} last_side={} L={} R={}".format(
                         time.ticks_diff(now_ms, start_ms),
                         format_values(config.FOLLOWER_SENSOR_NAMES, raw_values),
                         format_values(config.FOLLOWER_SENSOR_NAMES, black_values),
@@ -201,6 +204,7 @@ def main():
                         1 if outer_unchanged else 0,
                         mode,
                         error,
+                        base_speed,
                         config.CONTROL_DT_MS,
                         elapsed_ms,
                         correction,
