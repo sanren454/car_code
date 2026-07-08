@@ -13,29 +13,29 @@ CHANNELS = ["adc4", "adc3", "adc2", "adc1", "adc5"]
 # Five-channel line follower configuration.
 FOLLOWER_CHANNELS = ["adc4", "adc3", "adc2", "adc1", "adc5"]
 FOLLOWER_SENSOR_NAMES = ["L2", "L1", "M", "R1", "R2"]
-FOLLOWER_WEIGHTS = [-2, -1, 0, 1, 2]
+FOLLOWER_WEIGHTS = [-2, -1.3, 0, 1.3, 2]
 BLACK_IS_HIGH = False
 
 # PD and speed parameters.
-BASE_SPEED = 40
+BASE_SPEED = 65
 MAX_SPEED = 100
-MIN_SPEED = 25
-Kp = 13
-Kd = 1.5
-SEARCH_SPEED = 34
+MIN_SPEED = 30
+Kp = 35
+Kd = 6
+SEARCH_SPEED = 70
 
 # Outer sensor boost increases steering when L2/R2 sees the line.
-OUTER_TURN_GAIN = 1.25
+OUTER_TURN_GAIN = 1
 
 # Limit D term spikes to reduce steering jitter at high speed.
-DERIVATIVE_LIMIT = 50
+DERIVATIVE_LIMIT = 10000
 
 LOST_LINE_HOLD = True
 LOST_LINE_SEARCH = True
 SEARCH_DIRECTION_ERROR_THRESHOLD = 0.15
 
 # Wheel trim and correction direction.
-LEFT_TRIM = 0
+LEFT_TRIM = 1
 RIGHT_TRIM = 1
 TURN_DIR = 1
 

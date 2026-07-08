@@ -36,6 +36,22 @@ def has_edge_black(black_values):
     return black_values[0] or black_values[-1]
 
 
+def limit_output_speed(speed):
+    speed = int(speed)
+
+    if speed > config.MAX_SPEED:
+        return config.MAX_SPEED
+    if speed < -config.MAX_SPEED:
+        return -config.MAX_SPEED
+
+    if 0 < speed < config.MIN_SPEED:
+        return config.MIN_SPEED
+    if -config.MIN_SPEED < speed < 0:
+        return -config.MIN_SPEED
+
+    return speed
+
+
 def limit_derivative(derivative):
     if derivative > config.DERIVATIVE_LIMIT:
         return config.DERIVATIVE_LIMIT
@@ -65,8 +81,8 @@ def pd_control(error, last_error, black_values, dt_s):
         left_speed = base_speed - slowdown
         right_speed = base_speed
 
-    left_output = int(left_speed + config.LEFT_TRIM)
-    right_output = int(right_speed + config.RIGHT_TRIM)
+    left_output = limit_output_speed(left_speed + config.LEFT_TRIM)
+    right_output = limit_output_speed(right_speed + config.RIGHT_TRIM)
 
     return base_speed, correction, left_output, right_output
 
@@ -100,7 +116,7 @@ def search_line(last_search_direction):
         left_output = config.SEARCH_SPEED + config.LEFT_TRIM
         right_output = -config.SEARCH_SPEED
 
-    return 0, int(left_output), int(right_output)
+    return 0, limit_output_speed(left_output), limit_output_speed(right_output)
 
 
 def format_values(names, values):
