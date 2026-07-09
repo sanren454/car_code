@@ -60,7 +60,7 @@ def limit_derivative(derivative):
     return derivative
 
 
-def pd_control(error, last_error, black_values, dt_s):
+def pd_control(error, last_error, black_values, dt_s, base_speed):
     if dt_s <= 0:
         dt_s = 0.001
 
@@ -71,15 +71,9 @@ def pd_control(error, last_error, black_values, dt_s):
         correction *= config.OUTER_TURN_GAIN
 
     correction = config.TURN_DIR * correction
-    base_speed = int(config.BASE_SPEED)
-    slowdown = abs(correction)
-
-    if correction > 0:
-        left_speed = base_speed
-        right_speed = base_speed - slowdown
-    else:
-        left_speed = base_speed - slowdown
-        right_speed = base_speed
+    base_speed = int(base_speed)
+    left_speed = base_speed + correction
+    right_speed = base_speed - correction
 
     left_output = limit_output_speed(left_speed + config.LEFT_TRIM)
     right_output = limit_output_speed(right_speed + config.RIGHT_TRIM)
@@ -140,9 +134,11 @@ def print_startup_info():
     print("LOST_LINE_SEARCH:", config.LOST_LINE_SEARCH)
     print("TURN_DIR:", config.TURN_DIR)
     print("BASE_SPEED:", config.BASE_SPEED)
+    print("SHARP_TURN_SPEED:", config.SHARP_TURN_SPEED)
+    print("SHARP_TURN_RELEASE_DELAY_MS:", config.SHARP_TURN_RELEASE_DELAY_MS)
     print("Kp:", config.Kp)
     print("Kd:", config.Kd)
-    print("speed mode: signed subtract-only PD")
+    print("speed mode: signed add-subtract PD")
     print("OUTER_TURN_GAIN:", config.OUTER_TURN_GAIN)
     print("DERIVATIVE_LIMIT:", config.DERIVATIVE_LIMIT)
     print("CONTROL_DT_MS target:", config.CONTROL_DT_MS)
@@ -163,6 +159,7 @@ def main():
     last_debug_ms = time.ticks_ms()
     start_ms = time.ticks_ms()
     last_control_ms = start_ms
+    last_sharp_turn_ms = None
 
     print_startup_info()
 
@@ -177,6 +174,20 @@ def main():
             raw_values, black_values = read_sensors(sensors)
             mode = None
             base_speed = 0
+            sharp_turn_now = has_edge_black(black_values)
+            if sharp_turn_now:
+                last_sharp_turn_ms = now_ms
+            sharp_turn_hold = (
+                last_sharp_turn_ms is not None
+                and time.ticks_diff(now_ms, last_sharp_turn_ms)
+                <= config.SHARP_TURN_RELEASE_DELAY_MS
+            )
+            sharp_turn_active = sharp_turn_now or sharp_turn_hold
+            pd_base_speed = (
+                config.SHARP_TURN_SPEED
+                if sharp_turn_active
+                else config.BASE_SPEED
+            )
 
             error, line_lost = calculate_error(black_values, last_error)
 
@@ -200,7 +211,10 @@ def main():
                     last_error,
                     black_values,
                     dt_s,
+                    pd_base_speed,
                 )
+                if sharp_turn_active:
+                    mode = "sharp"
                 last_error = error
                 last_search_direction = update_search_direction(error, last_search_direction)
 
@@ -242,3 +256,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+  

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-MicroPython project for an ESP32-S3 CAM five-channel grayscale sensor line-following robot car. Uses PD (proportional-derivative) control with binary black/white detection (not continuous grayscale). Speed control is subtract-only — the PD correction only slows one side of the car, never accelerates beyond `BASE_SPEED`.
+MicroPython project for an ESP32-S3 CAM five-channel grayscale sensor line-following robot car. Uses PD (proportional-derivative) control with binary black/white detection (not continuous grayscale). Speed control is signed add-subtract: the PD correction increases one side and decreases the other, with +/-25 motor dead-zone compensation.
 
 ## Architecture
 

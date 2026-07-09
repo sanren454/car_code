@@ -13,19 +13,25 @@ CHANNELS = ["adc4", "adc3", "adc2", "adc1", "adc5"]
 # Five-channel line follower configuration.
 FOLLOWER_CHANNELS = ["adc4", "adc3", "adc2", "adc1", "adc5"]
 FOLLOWER_SENSOR_NAMES = ["L2", "L1", "M", "R1", "R2"]
-FOLLOWER_WEIGHTS = [-2, -1.3, 0, 1.3, 2]
+FOLLOWER_WEIGHTS = [-2, -1.2, 0, 1.2, 2]
 BLACK_IS_HIGH = False
 
 # PD and speed parameters.
-BASE_SPEED = 65
+BASE_SPEED = 60
 MAX_SPEED = 100
-MIN_SPEED = 30
-Kp = 35
-Kd = 6
-SEARCH_SPEED = 70
+# 电机死区补偿：非零输出如果落在 -25..25 内，会提升到对应方向的 25。
+MIN_SPEED = 25
+Kp = 16
+Kd = 7
+SEARCH_SPEED = 80
+
+# 急弯降速：L2/R2 检测到黑线时基础速度降到 50。
+# 外侧灯离开黑线后继续保持 18ms，再恢复 BASE_SPEED。
+SHARP_TURN_SPEED = 50
+SHARP_TURN_RELEASE_DELAY_MS = 18
 
 # Outer sensor boost increases steering when L2/R2 sees the line.
-OUTER_TURN_GAIN = 1
+OUTER_TURN_GAIN = 1.1
 
 # Limit D term spikes to reduce steering jitter at high speed.
 DERIVATIVE_LIMIT = 10000

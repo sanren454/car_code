@@ -1,6 +1,6 @@
 # 五路灰度传感器循迹
 
-当前程序使用五路灰度传感器的二值黑白判断计算 `error`，再用 PD 控制左右电机差速。电机速度采用只减不加逻辑：`BASE_SPEED` 可以设置得较高，转弯时 PD 修正量只用于降低一侧电机速度，另一侧不会超过 `BASE_SPEED`。不使用连续灰度强度算法，也没有中间传感器触发后的单独回正逻辑。
+当前程序使用五路灰度传感器的二值黑白判断计算 `error`，再用 PD 控制左右电机差速。电机速度采用又加又减逻辑：PD 修正量会提高一侧电机速度并降低另一侧电机速度，修正量足够大时允许一侧反转。电机死区按正负 25 处理，非零输出落在 `-25..25` 内时会补偿到 `-25` 或 `25`。不使用连续灰度强度算法，也没有中间传感器触发后的单独回正逻辑。
 
 ## 1. 传感器和引脚
 
@@ -127,26 +127,22 @@ elapsed_ms = time.ticks_diff(now_ms, last_control_ms)
 dt_s = elapsed_ms / 1000
 ```
 
-左右电机输出采用只减不加逻辑：
+左右电机输出采用又加又减逻辑：
 
 ```python
-base_speed = limit_forward_speed(BASE_SPEED)
-slowdown = abs(correction)
+base_speed = int(BASE_SPEED)
+left_speed = base_speed + correction
+right_speed = base_speed - correction
 
-if correction > 0:
-    left_speed = base_speed
-    right_speed = base_speed - slowdown
-else:
-    left_speed = base_speed - slowdown
-    right_speed = base_speed
-
-left_output = limit_forward_speed(left_speed + LEFT_TRIM)
-right_output = limit_forward_speed(right_speed + RIGHT_TRIM)
+left_output = limit_output_speed(left_speed + LEFT_TRIM)
+right_output = limit_output_speed(right_speed + RIGHT_TRIM)
 ```
 
-这样直行时两侧接近 `BASE_SPEED`，转弯时只降低内侧或需要减速的一侧。原有直线加速策略和出弯加速策略已经删除。
+这样直行时两侧接近 `BASE_SPEED`，转弯时一侧加速、另一侧减速；当修正量大于基础速度时，减速侧会变成反向输出。
 
 五路最外侧 `L2/R2` 检测到黑线时，会用 `OUTER_TURN_GAIN` 加强修正。
+
+急弯时会临时降低基础速度：只要 `L2/R2` 检测到黑线，PD 使用 `SHARP_TURN_SPEED` 作为基础速度；外侧灯离开黑线后继续保持 `SHARP_TURN_RELEASE_DELAY_MS`，再恢复 `BASE_SPEED`。
 
 主要参数：
 
@@ -154,6 +150,8 @@ right_output = limit_forward_speed(right_speed + RIGHT_TRIM)
 BASE_SPEED = 40
 MAX_SPEED = 100
 MIN_SPEED = 25
+SHARP_TURN_SPEED = 50
+SHARP_TURN_RELEASE_DELAY_MS = 18
 Kp = 13
 Kd = 1.5
 CONTROL_DT_MS = 6
@@ -162,6 +160,8 @@ LEFT_TRIM = 0
 RIGHT_TRIM = 1
 TURN_DIR = 1
 ```
+
+`MIN_SPEED = 25` 用于补偿电机死区：输出为 `0` 时保持停止；非零输出如果在 `-25..25` 内，会被提升到对应方向的最小有效 PWM。
 
 ## 5. 丢线处理
 
