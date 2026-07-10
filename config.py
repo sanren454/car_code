@@ -27,8 +27,13 @@ SEARCH_SPEED = 80
 
 # 急弯降速：L2/R2 检测到黑线时基础速度降到 50。
 # 外侧灯离开黑线后继续保持 18ms，再恢复 BASE_SPEED。
+SHARP_TURN_SLOWDOWN_ENABLED = True
 SHARP_TURN_SPEED = 50
 SHARP_TURN_RELEASE_DELAY_MS = 18
+
+# 环岛/宽黑线屏蔽急弯降速，避免环岛区域被误判成急弯。
+SHARP_TURN_IGNORE_ROUNDABOUT = True
+ROUNDABOUT_MIN_BLACK_COUNT = 4
 
 # Outer sensor boost increases steering when L2/R2 sees the line.
 OUTER_TURN_GAIN = 1.1

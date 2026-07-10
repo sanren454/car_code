@@ -36,6 +36,20 @@ def has_edge_black(black_values):
     return black_values[0] or black_values[-1]
 
 
+def is_roundabout_pattern(black_values):
+    both_edges_black = black_values[0] and black_values[-1]
+    wide_black_area = sum(black_values) >= config.ROUNDABOUT_MIN_BLACK_COUNT
+    return both_edges_black or wide_black_area
+
+
+def is_sharp_turn_triggered(black_values):
+    if not config.SHARP_TURN_SLOWDOWN_ENABLED:
+        return False
+    if config.SHARP_TURN_IGNORE_ROUNDABOUT and is_roundabout_pattern(black_values):
+        return False
+    return has_edge_black(black_values)
+
+
 def limit_output_speed(speed):
     speed = int(speed)
 
@@ -134,8 +148,11 @@ def print_startup_info():
     print("LOST_LINE_SEARCH:", config.LOST_LINE_SEARCH)
     print("TURN_DIR:", config.TURN_DIR)
     print("BASE_SPEED:", config.BASE_SPEED)
+    print("SHARP_TURN_SLOWDOWN_ENABLED:", config.SHARP_TURN_SLOWDOWN_ENABLED)
     print("SHARP_TURN_SPEED:", config.SHARP_TURN_SPEED)
     print("SHARP_TURN_RELEASE_DELAY_MS:", config.SHARP_TURN_RELEASE_DELAY_MS)
+    print("SHARP_TURN_IGNORE_ROUNDABOUT:", config.SHARP_TURN_IGNORE_ROUNDABOUT)
+    print("ROUNDABOUT_MIN_BLACK_COUNT:", config.ROUNDABOUT_MIN_BLACK_COUNT)
     print("Kp:", config.Kp)
     print("Kd:", config.Kd)
     print("speed mode: signed add-subtract PD")
@@ -174,7 +191,7 @@ def main():
             raw_values, black_values = read_sensors(sensors)
             mode = None
             base_speed = 0
-            sharp_turn_now = has_edge_black(black_values)
+            sharp_turn_now = is_sharp_turn_triggered(black_values)
             if sharp_turn_now:
                 last_sharp_turn_ms = now_ms
             sharp_turn_hold = (

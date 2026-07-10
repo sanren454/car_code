@@ -142,7 +142,7 @@ right_output = limit_output_speed(right_speed + RIGHT_TRIM)
 
 五路最外侧 `L2/R2` 检测到黑线时，会用 `OUTER_TURN_GAIN` 加强修正。
 
-急弯时会临时降低基础速度：只要 `L2/R2` 检测到黑线，PD 使用 `SHARP_TURN_SPEED` 作为基础速度；外侧灯离开黑线后继续保持 `SHARP_TURN_RELEASE_DELAY_MS`，再恢复 `BASE_SPEED`。
+急弯减速由 `SHARP_TURN_SLOWDOWN_ENABLED` 控制。开启时，单侧 `L2/R2` 检测到黑线会临时降低基础速度，PD 使用 `SHARP_TURN_SPEED` 作为基础速度；外侧灯离开黑线后继续保持 `SHARP_TURN_RELEASE_DELAY_MS`，再恢复 `BASE_SPEED`。如果 `SHARP_TURN_IGNORE_ROUNDABOUT = True`，检测到两侧外灯同时压线，或黑线数量达到 `ROUNDABOUT_MIN_BLACK_COUNT`，会屏蔽急弯减速，避免环岛/宽黑线区域误触发。
 
 主要参数：
 
@@ -150,8 +150,11 @@ right_output = limit_output_speed(right_speed + RIGHT_TRIM)
 BASE_SPEED = 40
 MAX_SPEED = 100
 MIN_SPEED = 25
+SHARP_TURN_SLOWDOWN_ENABLED = True
 SHARP_TURN_SPEED = 50
 SHARP_TURN_RELEASE_DELAY_MS = 18
+SHARP_TURN_IGNORE_ROUNDABOUT = True
+ROUNDABOUT_MIN_BLACK_COUNT = 4
 Kp = 13
 Kd = 1.5
 CONTROL_DT_MS = 6
